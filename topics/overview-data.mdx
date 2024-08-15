@@ -1,0 +1,381 @@
+---
+title: "Data"
+date: 2024-01-25T15:32:14Z
+lastmod: "2024-07-26"
+draft: false
+category: Scripts
+layout: PostSimple
+order: 1
+---
+
+In bitcoin's scripting language, several opcodes are used to push data onto the stack:
+
+1. **OP_0 to OP_16**: Push numbers 0 to 16 onto the stack.
+
+2. **OP_PUSHBYTES[1-75]**: Push 1 to 75 bytes onto the stack. The number in the opcode name indicates how many bytes to push.
+
+3. **OP_PUSHDATA1, OP_PUSHDATA2, OP_PUSHDATA4**: Push a specific number of bytes onto the stack. The number following the opcode specifies how many bytes of the subsequent data should be pushed.
+
+<OpcodeDataVisualizer></OpcodeDataVisualizer>
+
+4. **OP_1NEGATE**: Pushes the number -1 onto the stack.
+
+<ExpandableAlert title="Maximum Data Size" type="warning" expandable={false}>
+    The maximum amount of data that can be pushed in a single operation is **520
+    bytes**.
+</ExpandableAlert>
+
+<ExpandableAlert
+    title="Script simplification"
+    type="important"
+    expandable={false}
+>
+    Value-pushing opcodes are often omitted in discussions about bitcoin scripts
+    because these discussions typically focus on the logical operations or
+    conditions that scripts perform, such as verifying signatures or checking
+    conditions for spending. These opcodes are straightforward and mainly
+    involve pushing data onto the stack, which is not as interesting or complex
+    as the logical operations performed by other opcodes.
+</ExpandableAlert>
+
+---
+
+### Interactive ScriptPubKey Analyzer
+
+<SandpackComponent
+  template="react"
+  options={{
+    externalResources: ["https://cdn.tailwindcss.com"],
+    showLineNumbers: true,
+    showInlineErrors: true,
+    editorHeight: 600
+  }}
+  customSetup={{
+    dependencies: {
+      "react": "^18.0.0",
+      "react-dom": "^18.0.0",
+    },
+  }}
+  files={{
+    "/decoder.js": {
+      code: `
+// PUSHDATA Opcodes Decoder
+export function decodePUSHDATA(hexScript) {
+  const bytes = Uint8Array.from(Buffer.from(hexScript, 'hex'));
+  let i = 0;
+  const result = [];
+
+while (i < bytes.length) {
+const opcode = bytes[i];
+i += 1;
+
+    if (opcode >= 1 && opcode <= 75) {
+      const dataLength = opcode;
+      const data = bytes.slice(i, i + dataLength);
+      i += dataLength;
+      result.push({
+        opcode: 'PUSHDATA(' + opcode + ')',
+        length: dataLength,
+        data: Buffer.from(data).toString('hex'),
+        asm: 'PUSHDATA' + dataLength + ' ' + Buffer.from(data).toString('hex')
+      });
+    } else if (opcode === 0x4c) {  // OP_PUSHDATA1
+      const dataLength = bytes[i];
+      i += 1;
+      const data = bytes.slice(i, i + dataLength);
+      i += dataLength;
+      result.push({
+        opcode: 'OP_PUSHDATA1',
+        length: dataLength,
+        data: Buffer.from(data).toString('hex'),
+        asm: 'PUSHDATA1 ' + Buffer.from(data).toString('hex')
+      });
+    } else if (opcode === 0x4d) {  // OP_PUSHDATA2
+      const dataLength = bytes[i] + (bytes[i + 1] << 8);
+      i += 2;
+      const data = bytes.slice(i, i + dataLength);
+      i += dataLength;
+      result.push({
+        opcode: 'OP_PUSHDATA2',
+        length: dataLength,
+        data: Buffer.from(data).toString('hex'),
+        asm: 'PUSHDATA2 ' + Buffer.from(data).toString('hex')
+      });
+    } else if (opcode === 0x4e) {  // OP_PUSHDATA4
+      const dataLength = bytes[i] + (bytes[i + 1] << 8) + (bytes[i + 2] << 16) + (bytes[i + 3] << 24);
+      i += 4;
+      const data = bytes.slice(i, i + dataLength);
+      i += dataLength;
+      result.push({
+        opcode: 'OP_PUSHDATA4',
+        length: dataLength,
+        data: Buffer.from(data).toString('hex'),
+        asm: 'PUSHDATA4 ' + Buffer.from(data).toString('hex')
+      });
+    } else {
+      result.push({
+        opcode: 'OP_' + opcode.toString(16).padStart(2, '0').toUpperCase(),
+        asm: 'OP_' + opcode.toString(16).padStart(2, '0').toUpperCase()
+      });
+    }
+
+}
+
+return result;
+}
+;`,
+      active: true
+    },
+    "/App.js": {
+      code: `
+// App.js
+import React, { useState } from "react"
+import { decodePUSHDATA } from "./decoder"
+
+export default function Home() {
+  const [inputScript, setInputScript] = useState('');
+  const [asmResult, setAsmResult] = useState('');
+  const [error, setError] = useState('');
+
+const handleDecode = () => {
+if (typeof decodePUSHDATA !== 'function') {
+setError('');
+setAsmResult("Decoder function not implemented yet. Please implement the decodePUSHDATA function.");
+return;
+}
+
+    try {
+      const result = decodePUSHDATA(inputScript);
+      setAsmResult(JSON.stringify(result, null, 2));
+      setError('');
+    } catch (err) {
+      setError(err.message);
+      setAsmResult('');
+    }
+
+};
+
+const testCases = [
+{
+input: '76a91489abcdefabbaabbaabbaabbaabbaabbaabbaabba88ac',
+expected: 'OP_DUP OP_HASH160 PUSHDATA(20) 89abcdefabbaabbaabbaabbaabbaabbaabbaabba OP_EQUALVERIFY OP_CHECKSIG',
+},
+// Add more test cases here if needed
+];
+
+return (
+<div className="min-h-screen bg-[#282828]">
+<div className="max-w-3xl mx-auto p-6 ">
+<h1 className="text-3xl font-bold mb-6 text-center text-orange-600">PUSHDATA ScriptPubKey Decoder</h1>
+
+      <div className="mb-6">
+        <div className="flex">
+          <input
+            type="text"
+            value={inputScript}
+            onChange={(e) => setInputScript(e.target.value)}
+            placeholder="Enter ScriptPubKey (hex)"
+            className="flex-grow p-3 border border-gray-300 rounded-l-md focus:outline-none focus:ring-2 focus:ring-orange-500"
+          />
+          <button
+            onClick={handleDecode}
+            className="bg-orange-500 text-white p-3 rounded-r-md hover:bg-orange-600 transition duration-300"
+          >
+            Decode
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6 rounded-md">
+          <p className="font-bold">Error:</p>
+          <p>{error}</p>
+        </div>
+      )}
+
+      {asmResult && (
+        <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-6 rounded-md">
+          <p className="font-bold">Result:</p>
+          <pre className="break-all">{asmResult}</pre>
+        </div>
+      )}
+
+      <div className="bg-white p-4 rounded-md shadow">
+        <h3 className="font-bold text-lg mb-2 text-orange-600">Test Cases:</h3>
+        <div className="space-y-2">
+          {testCases.map((testCase, index) => (
+            <details key={index} className="border border-gray-200 rounded-md">
+              <summary className="cursor-pointer p-2 bg-gray-50 hover:bg-gray-100">
+                Test Case {index + 1}
+              </summary>
+              <div className="p-2 text-sm">
+                <p><span className="font-semibold">Input:</span> <span className="break-all">{testCase.input}</span></p>
+                <p><span className="font-semibold">Expected:</span> <span className="break-all">{testCase.expected}</span></p>
+              </div>
+            </details>
+          ))}
+        </div>
+      </div>
+    </div>
+
+    </div>
+
+);
+}`,
+hidden: false
+}
+}}
+/>
+
+---
+
+<SandpackComponent
+  template="react"
+  options={{
+    externalResources: ["https://cdn.tailwindcss.com"],
+    showLineNumbers: true,
+    showInlineErrors: true,
+    editorHeight: 600,
+  }}
+  customSetup={{
+    dependencies: {
+      react: "^18.0.0",
+      "react-dom": "^18.0.0",
+    },
+  }}
+  files={{
+    "/App.js": {
+      code: `
+import React from "react";
+import { PushDataExercise } from "./PushDataExercise";
+
+export default function App() {
+    return (
+        <div className="max-w-4xl mx-auto p-6 min-h-screen bg-[#282828] text-white">
+            <h1 className="text-3xl font-bold mb-6 text-center text-yellow-400">
+                Implement OP_PUSHDATA2 Parsing
+            </h1>
+            <p className="mb-4">
+                Your task is to complete the implementation of the OP_PUSHDATA2
+                parsing logic in the scriptParser.js file. The other PUSHDATA
+                opcodes are already implemented for reference. Make all test
+                cases pass to complete the exercise.
+            </p>
+            <PushDataExercise />
+        </div>
+    )
+}
+;`,
+      hidden: true,
+    },
+    "/PushDataExercise.js": {
+      code: `
+import React, { useState, useEffect } from "react"
+import { decodePUSHDATA } from "./scriptParser"
+
+const testCases = [
+{
+input: "4d0500010203040506",
+expected: "PUSHDATA2 0500 0102030405",
+},
+{
+input: "4c0401020304",
+expected: "PUSHDATA1 04 01020304",
+},
+{
+input: "4e0600000001020304050607",
+expected: "PUSHDATA4 06000000 010203040506",
+},
+];
+
+export const PushDataExercise = () => {
+  const [results, setResults] = useState([]);
+
+useEffect(() => {
+runTests();
+}, []);
+
+const runTests = () => {
+const newResults = testCases.map(testCase => {
+const output = decodePUSHDATA(testCase.input);
+const passed = output.trim() === testCase.expected.trim();
+return { ...testCase, output, passed };
+});
+setResults(newResults);
+};
+
+return (
+<div className="space-y-6">
+<button
+        onClick={runTests}
+        className="bg-yellow-500 text-gray-900 px-4 py-2 rounded-md hover:bg-yellow-400 transition duration-300"
+      >
+Run Tests
+</button>
+{results.map((result, index) => (
+<div
+key={index}
+className={"p-4 rounded-md " + (result.passed ? "bg-green-800" : "bg-red-800")} >
+<h3 className="text-xl font-semibold mb-2">
+Test Case {index + 1}
+</h3>
+<p>Input: {result.input}</p>
+<p>Expected: {result.expected}</p>
+<p>Output: {result.output}</p>
+<p className={"font-bold mt-2 " + (result.passed ? "text-green-400" : "text-red-400")}>
+{result.passed ? "PASSED" : "FAILED"}
+</p>
+</div>
+))}
+{results.every(r => r.passed) && (
+<div className="bg-green-700 text-white p-4 rounded-md">
+<h3 className="text-xl font-semibold mb-2">Congratulations!</h3>
+<p>You've successfully implemented the OP_PUSHDATA2 parsing logic!</p>
+</div>
+)}
+</div>
+);
+};
+`,
+      hidden: true,
+    },
+    "/scriptParser.js": {
+      code: `
+export function decodePUSHDATA(hexScript) {
+const bytes = Uint8Array.from(Buffer.from(hexScript, 'hex'));
+let i = 0;
+
+while (i < bytes.length) {
+const opcode = bytes[i];
+i += 1;
+
+    if (opcode >= 1 && opcode <= 75) {
+      const dataLength = opcode;
+      const data = bytes.slice(i, i + dataLength);
+      return 'PUSHDATA' + dataLength + ' ' + Buffer.from(data).toString('hex');
+    } else if (opcode === 0x4c) {  // OP_PUSHDATA1
+      const dataLength = bytes[i];
+      i += 1;
+      const data = bytes.slice(i, i + dataLength);
+      return 'PUSHDATA1 ' + dataLength.toString(16).padStart(2, '0') + ' ' + Buffer.from(data).toString('hex');
+    } else if (opcode === 0x4d) {  // OP_PUSHDATA2
+      // TODO: Implement OP_PUSHDATA2 parsing logic here
+      // Hint: The data length is stored in the next two bytes (little-endian)
+      // You need to extract the length, then the data, and return the appropriate ASM string
+      return 'PUSHDATA2 '; // Complete this
+    } else if (opcode === 0x4e) {  // OP_PUSHDATA4
+      const dataLength = bytes[i] + (bytes[i + 1] << 8) + (bytes[i + 2] << 16) + (bytes[i + 3] << 24);
+      i += 4;
+      const data = bytes.slice(i, i + dataLength);
+      return 'PUSHDATA4 ' + dataLength.toString(16).padStart(8, '0') + ' ' + Buffer.from(data).toString('hex');
+    } else {
+      return 'OP_' + opcode.toString(16).padStart(2, '0').toUpperCase();
+    }
+
+}
+}
+`,
+active: true,
+},
+}}
+/>
